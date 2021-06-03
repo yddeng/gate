@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"fmt"
 	"github.com/yddeng/smux"
 	"net"
 	"sync"
@@ -15,9 +16,17 @@ type Gateway struct {
 	clientLock sync.Mutex
 }
 
+func (this *Gateway) random() *client {
+	for _, cli := range this.clients {
+		return cli
+	}
+	return nil
+}
+
 type client struct {
 	smuxSession *smux.Session
 	channel     map[uint16]*channel
+	channelLock sync.Mutex
 }
 
 func Gate(internalAddr, externalAddr string) {
@@ -30,14 +39,14 @@ func Gate(internalAddr, externalAddr string) {
 		panic(err)
 	}
 
-	gate.externalListener, err = net.Listen("tcp", internalAddr)
+	gate.externalListener, err = net.Listen("tcp", externalAddr)
 	if err != nil {
 		panic(err)
 	}
 
 	go listen(gate.internalListener, func(conn net.Conn) {
 		// auth
-
+		fmt.Println("new client", conn.RemoteAddr())
 		cli := &client{
 			smuxSession: smux.SmuxSession(conn),
 			channel:     map[uint16]*channel{},
@@ -52,15 +61,14 @@ func Gate(internalAddr, externalAddr string) {
 
 	go listen(gate.externalListener, func(conn net.Conn) {
 
+		fmt.Println("new user", conn.RemoteAddr())
 		gate.clientLock.Lock()
-
-		length := len(gate.clients)
-		if length == 0 {
+		cli := gate.random()
+		if cli == nil {
 			conn.Close()
 			gate.clientLock.Unlock()
 			return
 		}
-		cli := gate.clients["sf"]
 		gate.clientLock.Unlock()
 
 		cli.newConn(conn)
@@ -98,15 +106,23 @@ func (cli *client) start() {
 func (cli *client) newConn(conn net.Conn) {
 	stream, err := cli.smuxSession.Open()
 	if err != nil {
+		fmt.Println(err)
 		conn.Close()
 		return
 	}
 
+	fmt.Println("newConn", stream.StreamID(), conn.RemoteAddr())
+
 	ch := newChannel(stream, conn)
 
+	cli.channelLock.Lock()
 	cli.channel[stream.StreamID()] = ch
+	cli.channelLock.Unlock()
 
-	go ch.run(func() {
+	ch.run(func() {
+		fmt.Println("conn close", stream.StreamID(), conn.RemoteAddr())
+		cli.channelLock.Lock()
 		delete(cli.channel, stream.StreamID())
+		cli.channelLock.Unlock()
 	})
 }

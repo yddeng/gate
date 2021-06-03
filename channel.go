@@ -35,8 +35,10 @@ func (this *channel) run(closeFunc func()) {
 
 func (this *channel) handleRead() {
 	io.Copy(this.stream, this.tcpConn)
+	this.close()
 }
 
 func (this *channel) handleWrite() {
 	io.Copy(this.tcpConn, this.stream)
+	this.close()
 }
