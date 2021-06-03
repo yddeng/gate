@@ -12,7 +12,11 @@ var (
 	streamLock sync.Mutex
 )
 
-func newStream(stream *smux.Stream) {
+func newStream(stream *smux.Stream, err error) {
+	if err != nil {
+		fmt.Println(17, err)
+		return
+	}
 	streamLock.Lock()
 	if _, ok := streams[stream.StreamID()]; !ok {
 		fmt.Println("new stream", stream.StreamID())
@@ -37,7 +41,7 @@ func handleStream(stream *smux.Stream) {
 	for {
 		n, err := stream.Read(buf)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println(44, err)
 			closeStream(stream)
 			return
 		}

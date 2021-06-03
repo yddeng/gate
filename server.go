@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type Gateway struct {
+type Server struct {
 	internalListener net.Listener
 	externalListener net.Listener
 
@@ -16,7 +16,7 @@ type Gateway struct {
 	clientLock sync.Mutex
 }
 
-func (this *Gateway) random() *client {
+func (this *Server) random() *client {
 	for _, cli := range this.clients {
 		return cli
 	}
@@ -29,8 +29,8 @@ type client struct {
 	channelLock sync.Mutex
 }
 
-func Gate(internalAddr, externalAddr string) {
-	gate := new(Gateway)
+func Launch(internalAddr, externalAddr string) {
+	gate := new(Server)
 	gate.clients = map[string]*client{}
 
 	var err error
@@ -56,7 +56,12 @@ func Gate(internalAddr, externalAddr string) {
 		gate.clients[conn.RemoteAddr().String()] = cli
 		gate.clientLock.Unlock()
 
-		go cli.start()
+		go cli.start(func(err error) {
+			fmt.Println(60, err)
+			gate.clientLock.Lock()
+			delete(gate.clients, conn.RemoteAddr().String())
+			gate.clientLock.Unlock()
+		})
 	})
 
 	go listen(gate.externalListener, func(conn net.Conn) {
@@ -92,10 +97,11 @@ func listen(listener net.Listener, newConn func(conn net.Conn)) {
 	}
 }
 
-func (cli *client) start() {
+func (cli *client) start(closeFunc func(err error)) {
 	for {
 		stream, err := cli.smuxSession.Accept()
 		if err != nil {
+			closeFunc(err)
 			return
 		}
 		stream.Close()

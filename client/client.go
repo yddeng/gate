@@ -9,7 +9,7 @@ type Client struct {
 	smuxSession *smux.Session
 }
 
-func NewClient(address string, newStream func(stream *smux.Stream)) (*Client, error) {
+func NewClient(address string, newStream func(stream *smux.Stream, err error)) (*Client, error) {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return nil, err
@@ -21,13 +21,14 @@ func NewClient(address string, newStream func(stream *smux.Stream)) (*Client, er
 	return cli, nil
 }
 
-func (cli *Client) start(newStream func(stream *smux.Stream)) {
+func (cli *Client) start(newStream func(stream *smux.Stream, err error)) {
 	for {
 		stream, err := cli.smuxSession.Accept()
 		if err != nil {
+			newStream(nil, err)
 			return
 		}
-		go newStream(stream)
+		go newStream(stream, nil)
 	}
 }
 
