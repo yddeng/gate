@@ -1,4 +1,4 @@
-package gateway
+package gate
 
 import (
 	"github.com/yddeng/smux"
