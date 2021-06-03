@@ -5,30 +5,37 @@ import (
 	"net"
 )
 
-type Client struct {
-	smuxSession *smux.Session
+type Dispatcher interface {
+	OnNewStream(stream *smux.Stream)
+	OnSessionClose(err error)
 }
 
-func NewClient(address string, newStream func(stream *smux.Stream, err error)) (*Client, error) {
+type Client struct {
+	smuxSession *smux.Session
+	dispatcher  Dispatcher
+}
+
+func NewClient(address string, dispatcher Dispatcher) (*Client, error) {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return nil, err
 	}
 
-	cli := &Client{smuxSession: smux.SmuxSession(conn)}
-	go cli.start(newStream)
+	cli := &Client{smuxSession: smux.SmuxSession(conn), dispatcher: dispatcher}
+	go cli.start()
 
 	return cli, nil
 }
 
-func (cli *Client) start(newStream func(stream *smux.Stream, err error)) {
+func (cli *Client) start() {
 	for {
 		stream, err := cli.smuxSession.Accept()
 		if err != nil {
-			newStream(nil, err)
+			cli.smuxSession.Close()
+			cli.dispatcher.OnSessionClose(err)
 			return
 		}
-		go newStream(stream, nil)
+		cli.dispatcher.OnNewStream(stream)
 	}
 }
 

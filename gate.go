@@ -3,12 +3,13 @@ package gate
 import (
 	"fmt"
 	"github.com/yddeng/smux"
+	"io"
 	"net"
 	"sync"
 	"time"
 )
 
-type Server struct {
+type GateServer struct {
 	internalListener net.Listener
 	externalListener net.Listener
 
@@ -16,7 +17,7 @@ type Server struct {
 	clientLock sync.Mutex
 }
 
-func (this *Server) random() *client {
+func (this *GateServer) random() *client {
 	for _, cli := range this.clients {
 		return cli
 	}
@@ -30,7 +31,7 @@ type client struct {
 }
 
 func Launch(internalAddr, externalAddr string) {
-	gate := new(Server)
+	gate := new(GateServer)
 	gate.clients = map[string]*client{}
 
 	var err error
@@ -57,7 +58,7 @@ func Launch(internalAddr, externalAddr string) {
 		gate.clientLock.Unlock()
 
 		go cli.start(func(err error) {
-			fmt.Println(60, err)
+			fmt.Println(62, err)
 			gate.clientLock.Lock()
 			delete(gate.clients, conn.RemoteAddr().String())
 			gate.clientLock.Unlock()
@@ -65,7 +66,6 @@ func Launch(internalAddr, externalAddr string) {
 	})
 
 	go listen(gate.externalListener, func(conn net.Conn) {
-
 		fmt.Println("new user", conn.RemoteAddr())
 		gate.clientLock.Lock()
 		cli := gate.random()
@@ -92,7 +92,6 @@ func listen(listener net.Listener, newConn func(conn net.Conn)) {
 				return
 			}
 		}
-
 		go newConn(conn)
 	}
 }
@@ -101,11 +100,12 @@ func (cli *client) start(closeFunc func(err error)) {
 	for {
 		stream, err := cli.smuxSession.Accept()
 		if err != nil {
+			cli.smuxSession.Close()
 			closeFunc(err)
 			return
 		}
-		stream.Close()
 		// 暂不允许对端开启
+		stream.Close()
 	}
 }
 
@@ -131,4 +131,40 @@ func (cli *client) newConn(conn net.Conn) {
 		delete(cli.channel, stream.StreamID())
 		cli.channelLock.Unlock()
 	})
+}
+
+type channel struct {
+	stream  *smux.Stream
+	tcpConn net.Conn
+
+	closeOnce sync.Once
+	closeFunc func()
+}
+
+func newChannel(stream *smux.Stream, conn net.Conn) *channel {
+	return &channel{stream: stream, tcpConn: conn}
+}
+
+func (this *channel) close() {
+	this.closeOnce.Do(func() {
+		this.closeFunc()
+		this.stream.Close()
+		this.tcpConn.Close()
+	})
+}
+
+func (this *channel) run(closeFunc func()) {
+	this.closeFunc = closeFunc
+	go this.handleRead()
+	go this.handleWrite()
+}
+
+func (this *channel) handleRead() {
+	io.Copy(this.stream, this.tcpConn)
+	this.close()
+}
+
+func (this *channel) handleWrite() {
+	io.Copy(this.tcpConn, this.stream)
+	this.close()
 }
