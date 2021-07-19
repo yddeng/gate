@@ -106,6 +106,7 @@ func (this *Service) handleConn(conn net.Conn) error {
 	id := muxConn.ID()
 	ch := newChannel(muxConn, conn)
 
+	log.Info("new channel", muxConn.ID())
 	this.chanLock.Lock()
 	this.channels[id] = ch
 	this.chanLock.Unlock()

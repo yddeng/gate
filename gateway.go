@@ -198,12 +198,12 @@ func (this *Gateway) handleClient(conn net.Conn) {
 		return
 	}
 
+	log.Info("new client", id)
 	if err := serv.handleConn(conn); err != nil {
 		_ = reply(Err_NoService, 0)
 		_ = conn.Close()
 		return
 	}
-	log.Info("new client", id)
 	if err := reply(OK, serv.id); err != nil {
 		_ = conn.Close()
 	}
